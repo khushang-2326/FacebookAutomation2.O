@@ -1,0 +1,43 @@
+﻿# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment secrets
+.env
+*.env
+
+# SSL / TLS certificates & keys
+*.crt
+*.key
+*.pem
+
+# Large binary / build artifacts
+*.exe
+*.zip
+dist-electron/
+build/
+dist/
+
+# Electron build output
+release/
+
+# Runtime / trial / temporary data
+*.dat
+
+# Media uploads (preserve folder with .gitkeep)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Video scratch files
+scratch_test.mp4
+
+# Editor
+.vscode/
+.idea/

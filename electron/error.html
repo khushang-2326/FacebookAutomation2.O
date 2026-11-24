@@ -1,0 +1,39 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Facebook Live Streamer — Load Error</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background-color: #030712; color: #f3f4f6; font-family: system-ui, -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; }
+    .card { background: #111827; border: 1px solid #374151; padding: 2.5rem; border-radius: 1rem; max-width: 560px; width: 90%; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.5); }
+    h1 { color: #f87171; font-size: 1.25rem; margin-bottom: 0.75rem; font-weight: 700; }
+    p { font-size: 0.9rem; color: #9ca3af; line-height: 1.5; margin-bottom: 1.25rem; }
+    .info-box { background: #1f2937; padding: 1rem; border-radius: 0.5rem; font-family: monospace; font-size: 0.85rem; color: #9ca3af; margin-bottom: 1.25rem; word-break: break-all; }
+    .info-box div + div { margin-top: 0.4rem; }
+    .info-box strong { color: #e5e7eb; }
+    .btn { background: #2563eb; color: white; border: none; padding: 0.625rem 1.25rem; font-weight: 600; border-radius: 0.5rem; cursor: pointer; font-size: 0.875rem; transition: background 0.2s; }
+    .btn:hover { background: #1d4ed8; }
+    .hint { margin-top: 1rem; font-size: 0.78rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>&#9888;&#65039; Application Failed to Start</h1>
+    <p>The embedded backend server could not be reached. This is usually caused by a startup error in the backend.</p>
+    <div class="info-box">
+      <div><strong>Target URL:</strong> <span id="url">http://localhost:5000/</span></div>
+      <div><strong>Error Code:</strong> <span id="code">-102</span></div>
+      <div><strong>Description:</strong> <span id="desc">ERR_CONNECTION_REFUSED</span></div>
+    </div>
+    <button class="btn" onclick="window.location.href='http://localhost:5000/'">Retry Connection</button>
+    <div class="hint">Log file: <code>%APPDATA%\facebook-live-automation\electron-app.log</code></div>
+  </div>
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const u = params.get('url'); if (u) document.getElementById('url').textContent = u;
+    const c = params.get('code'); if (c) document.getElementById('code').textContent = c;
+    const d = params.get('desc'); if (d) document.getElementById('desc').textContent = d;
+  </script>
+</body>
+</html>
