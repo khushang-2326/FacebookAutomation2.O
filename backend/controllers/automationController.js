@@ -4,6 +4,7 @@ const FacebookPage = require('../models/FacebookPage');
 const schedulerService = require('../services/schedulerService');
 const broadcastService = require('../services/broadcastService');
 const ffmpegService = require('../services/ffmpegService');
+const { gstreamerService } = require('../services/gstreamerService');
 const config = require('../config/config');
 const { Logger } = require('../utils/logger');
 const youtubeService = require('../services/youtubeService');
@@ -419,13 +420,26 @@ exports.getAutomationById = async (req, res, next) => {
     // Get active process telemetry if currently running
     let activeProcess = null;
     if (automation.activeBroadcastId) {
-      const activeEntry = ffmpegService.activeProcesses.get(automation.activeBroadcastId._id.toString());
-      if (activeEntry) {
+      const bId = (automation.activeBroadcastId._id || automation.activeBroadcastId).toString();
+      const gstEntry = gstreamerService.activeProcesses.get(bId) || gstreamerService.getActivePipeline(automation._id);
+      if (gstEntry) {
         activeProcess = {
-          pid: activeEntry.pid,
-          metrics: activeEntry.metrics,
-          isMock: activeEntry.isMock
+          engine: 'GSTREAMER',
+          pid: gstEntry.child ? gstEntry.child.pid : null,
+          status: gstEntry.status,
+          metrics: gstEntry.metrics || null,
+          isMock: false
         };
+      } else {
+        const activeEntry = ffmpegService.activeProcesses.get(bId);
+        if (activeEntry) {
+          activeProcess = {
+            engine: 'FFMPEG',
+            pid: activeEntry.pid,
+            metrics: activeEntry.metrics,
+            isMock: activeEntry.isMock
+          };
+        }
       }
     }
 
@@ -757,8 +771,11 @@ exports.updateAutomation = async (req, res, next) => {
         }
       }
 
-      // 2. Force kill any remaining active FFmpeg process memory entries for this automation
-      await ffmpegService.stopStreamsForAutomation(automation._id).catch(() => {});
+      // 2. Force kill any remaining active streaming processes (GStreamer & FFmpeg) for this automation
+      await Promise.allSettled([
+        gstreamerService.stopStreamsForAutomation(automation._id),
+        ffmpegService.stopStreamsForAutomation(automation._id)
+      ]);
 
       // 3. Wait 2 seconds to guarantee complete OS handle & socket release
       await new Promise(resolve => setTimeout(resolve, 2000));

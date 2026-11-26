@@ -124,6 +124,8 @@ export const AutomationDetail = () => {
       }
     };
 
+    socket.on('gstreamer:metrics', handleMetrics);
+    socket.on('gstreamer:closed', handleClosed);
     socket.on('ffmpeg:metrics', handleMetrics);
     socket.on('ffmpeg:closed', handleClosed);
     socket.on('camera:active_switched', handleCameraSwitched);
@@ -134,6 +136,8 @@ export const AutomationDetail = () => {
 
     return () => {
       leaveAutomationRoom(id);
+      socket.off('gstreamer:metrics', handleMetrics);
+      socket.off('gstreamer:closed', handleClosed);
       socket.off('ffmpeg:metrics', handleMetrics);
       socket.off('ffmpeg:closed', handleClosed);
       socket.off('camera:active_switched', handleCameraSwitched);
@@ -436,12 +440,14 @@ export const AutomationDetail = () => {
             </div>
           </div>
 
-          {/* Stage 5: FFmpeg Transcoder */}
+          {/* Stage 5: GStreamer Engine */}
           <div className="p-3 rounded-xl bg-slate-900/60 border border-slate-800 flex flex-col justify-between">
-            <span className="text-[10px] text-slate-400 uppercase font-bold">5. FFmpeg Engine</span>
+            <span className="text-[10px] text-slate-400 uppercase font-bold">5. GStreamer Engine</span>
             <div className="flex items-center gap-1.5 mt-2">
-              <span className={`w-2 h-2 rounded-full ${automation.ffmpegStatus === 'RUNNING' ? 'bg-emerald-400 shadow-emerald-500/50 shadow-sm animate-pulse' : automation.ffmpegStatus === 'STARTING' ? 'bg-amber-400 animate-pulse' : 'bg-rose-500'}`} />
-              <span className="text-xs font-mono font-bold text-slate-200">{automation.ffmpegStatus || (automation.status === 'LIVE' ? 'RUNNING' : 'STOPPED')}</span>
+              <span className={`w-2 h-2 rounded-full ${(automation.gstreamerStatus === 'RUNNING' || automation.mediaEngineStatus === 'RUNNING' || (automation.status === 'LIVE' && !['FAILED', 'STOPPED'].includes(automation.gstreamerStatus))) ? 'bg-emerald-400 shadow-emerald-500/50 shadow-sm animate-pulse' : (automation.gstreamerStatus === 'STARTING' || automation.status === 'PREPARING') ? 'bg-amber-400 animate-pulse' : 'bg-rose-500'}`} />
+              <span className="text-xs font-mono font-bold text-slate-200">
+                {automation.gstreamerStatus || automation.mediaEngineStatus || (automation.status === 'LIVE' ? 'RUNNING' : automation.status === 'PREPARING' ? 'STARTING' : 'STOPPED')}
+              </span>
             </div>
           </div>
 

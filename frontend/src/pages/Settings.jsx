@@ -553,10 +553,70 @@ const SystemDiagnosticsPanel = () => {
         <div className="p-4 rounded-xl bg-slate-900/60 border border-slate-800 space-y-2">
           <p className="font-bold text-slate-200 text-sm border-b border-slate-800 pb-2">Media Tool Resolvers</p>
           
-          {/* FFmpeg */}
-          <div className="space-y-1">
+          {/* GStreamer Section (Primary Live Camera Engine) */}
+          <div className="border-t border-slate-800/60 my-2 pt-2">
             <div className="flex justify-between items-center">
-              <span className="text-slate-300 font-bold">FFmpeg (Stream Engine):</span>
+              <span className="text-slate-300 font-bold">GStreamer (Primary Live Camera Engine):</span>
+              <span className={diagData?.gstreamer?.gstreamerAvailable ? 'text-emerald-400 font-bold' : 'text-amber-400 font-bold'}>
+                {diagData?.gstreamer?.gstreamerAvailable ? '✓ READY' : '✕ MISSING'}
+              </span>
+            </div>
+            {diagData?.gstreamer?.gstreamerAvailable ? (
+              <div className="mt-1 space-y-1 text-[11px] text-slate-400 font-mono">
+                <div className="flex justify-between">
+                  <span>Version:</span>
+                  <span className="text-slate-200">{diagData?.gstreamer?.version || '1.28.9'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>D3D11 Zero-Copy:</span>
+                  <span className={diagData?.gstreamer?.d3d11Available ? 'text-emerald-400' : 'text-slate-400'}>
+                    {diagData?.gstreamer?.d3d11Available ? '✓ Available' : 'Missing'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>D3D11 Video Sink (HDMI):</span>
+                  <span className={diagData?.gstreamer?.d3d11VideoSink ? 'text-emerald-400' : 'text-slate-400'}>
+                    {diagData?.gstreamer?.d3d11VideoSink ? '✓ Available' : 'Missing'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Intel QSV / AMD / NVENC:</span>
+                  <span className="text-sky-400">{diagData?.gstreamer?.gpuVendor || 'D3D11'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>H.264 Encoder:</span>
+                  <span className="text-slate-200">{diagData?.gstreamer?.activeH264Encoder || 'x264enc'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>H.265 Encoder:</span>
+                  <span className="text-slate-200">{diagData?.gstreamer?.activeH265Encoder || 'x265enc'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>H.264 Decoder:</span>
+                  <span className="text-slate-200">{diagData?.gstreamer?.activeH264Decoder || 'd3d11h264dec'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>H.265 Decoder:</span>
+                  <span className="text-slate-200">{diagData?.gstreamer?.activeH265Decoder || 'd3d11h265dec'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>RTSP / RTP Plugins:</span>
+                  <span className={diagData?.gstreamer?.rtspAvailable ? 'text-emerald-400' : 'text-rose-400'}>
+                    {diagData?.gstreamer?.rtspAvailable ? '✓ Available' : 'Missing'}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-[11px] text-amber-400/80 font-mono mt-1">
+                GStreamer MSVC 64-bit runtime not detected.
+              </p>
+            )}
+          </div>
+
+          <div className="border-t border-slate-800/60 my-2 pt-2">
+            {/* FFmpeg */}
+            <div className="flex justify-between items-center">
+              <span className="text-slate-300 font-bold">FFmpeg (Legacy / File Engine):</span>
               <span className={diagData?.ffmpeg?.available ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
                 {diagData?.ffmpeg?.available ? '✓ READY' : '✕ MISSING'}
               </span>

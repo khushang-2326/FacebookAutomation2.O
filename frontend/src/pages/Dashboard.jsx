@@ -413,7 +413,7 @@ export const Dashboard = () => {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              This action will <strong>immediately stop all active FFmpeg video streams</strong> and end all live broadcasts on your Facebook Pages. All running schedules will be paused.
+              This action will <strong>immediately stop all active video streams</strong> and end all live broadcasts on your Facebook Pages and destinations. All running schedules will be paused.
             </p>
 
             <div className="flex items-center justify-end gap-3 pt-2">

@@ -448,6 +448,8 @@ export const ProjectorScreen = () => {
     socket.on('camera:switched', handleCameraSwitched);
     socket.on('media:active_switched', handleCameraSwitched);
     socket.on('youtube:active_switched', handleCameraSwitched);
+    socket.on('gstreamer:metrics', handleMetrics);
+    socket.on('gstreamer:closed', handleStatusUpdate);
     socket.on('ffmpeg:metrics', handleMetrics);
     socket.on('ffmpeg:closed', handleStatusUpdate);
     socket.on('automation:updated', handleStatusUpdate);
@@ -462,6 +464,8 @@ export const ProjectorScreen = () => {
       socket.off('camera:switched', handleCameraSwitched);
       socket.off('media:active_switched', handleCameraSwitched);
       socket.off('youtube:active_switched', handleCameraSwitched);
+      socket.off('gstreamer:metrics', handleMetrics);
+      socket.off('gstreamer:closed', handleStatusUpdate);
       socket.off('ffmpeg:metrics', handleMetrics);
       socket.off('ffmpeg:closed', handleStatusUpdate);
       socket.off('automation:updated', handleStatusUpdate);

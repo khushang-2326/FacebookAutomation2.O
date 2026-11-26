@@ -1,6 +1,7 @@
 const Broadcast = require('../models/Broadcast');
 const broadcastService = require('../services/broadcastService');
 const ffmpegService = require('../services/ffmpegService');
+const { gstreamerService } = require('../services/gstreamerService');
 
 // @desc    Get all broadcasts history with filters
 // @route   GET /api/broadcasts
@@ -48,12 +49,15 @@ exports.getBroadcastById = async (req, res, next) => {
       return res.status(404).json({ success: false, error: 'Broadcast session not found' });
     }
 
-    const activeEntry = ffmpegService.activeProcesses.get(broadcast._id.toString());
+    const bId = broadcast._id.toString();
+    const gstEntry = gstreamerService.activeProcesses.get(bId);
+    const activeEntry = gstEntry || ffmpegService.activeProcesses.get(bId);
 
     res.json({
       success: true,
       broadcast,
-      liveTelemetry: activeEntry ? activeEntry.metrics : null
+      mediaEngine: gstEntry ? 'GSTREAMER' : (activeEntry ? 'FFMPEG' : 'NONE'),
+      liveTelemetry: activeEntry ? (activeEntry.metrics || null) : null
     });
   } catch (error) {
     next(error);

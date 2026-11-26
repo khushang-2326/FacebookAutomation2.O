@@ -5,6 +5,7 @@ const Media = require('../models/Media');
 const StreamProcess = require('../models/StreamProcess');
 const broadcastService = require('./broadcastService');
 const ffmpegService = require('./ffmpegService');
+const { gstreamerService } = require('./gstreamerService');
 const config = require('../config/config');
 const { Logger } = require('../utils/logger');
 const fs = require('fs');
@@ -489,8 +490,10 @@ class SchedulerService {
 
     // Clean up any stale streams before launching
     try {
-      const ffmpegService = require('./ffmpegService');
-      await ffmpegService.stopStreamsForAutomation(claimedAuto._id);
+      await Promise.allSettled([
+        gstreamerService.stopStreamsForAutomation(claimedAuto._id),
+        ffmpegService.stopStreamsForAutomation(claimedAuto._id)
+      ]);
     } catch (_) {}
 
     const preflight = await this.preflightCheck(claimedAuto._id);
@@ -748,23 +751,30 @@ class SchedulerService {
 
     const allowedStatuses = ['PAUSED', 'STOPPED', 'FAILED', 'CRASHED', 'SCHEDULED', 'PREPARING', 'RECOVERING', 'ERROR', 'IDLE', 'CREATING_BROADCAST'];
     if (!allowedStatuses.includes(automation.status)) {
-      const ffmpegService = require('./ffmpegService');
       let livePid = null;
-      for (const [, entry] of ffmpegService.activeProcesses.entries()) {
-        if (entry.automationId && entry.automationId.toString() === automation._id.toString()) {
-          livePid = entry.pid;
-          break;
+      const gstEntry = gstreamerService.getActivePipeline(automation._id);
+      if (gstEntry && gstEntry.child) {
+        livePid = gstEntry.child.pid;
+      }
+      if (!livePid) {
+        for (const [, entry] of ffmpegService.activeProcesses.entries()) {
+          if (entry.automationId && entry.automationId.toString() === automation._id.toString()) {
+            livePid = entry.pid;
+            break;
+          }
         }
       }
       if (livePid) {
         throw new Error(`Automation "${automation.name}" is already actively streaming (PID ${livePid}). Please stop or wait for rotation before resuming.`);
       }
-      logger.warn(`Automation status was "${automation.status}" but no active FFmpeg process found. Allowing retry/resume.`);
+      logger.warn(`Automation status was "${automation.status}" but no active streaming process found. Allowing retry/resume.`);
     }
 
     // Clean up any stale/orphaned processes or resources for this automation before restarting
-    const ffmpegService = require('./ffmpegService');
-    await ffmpegService.stopStreamsForAutomation(automation._id);
+    await Promise.allSettled([
+      gstreamerService.stopStreamsForAutomation(automation._id),
+      ffmpegService.stopStreamsForAutomation(automation._id)
+    ]);
 
     const nextIndex = (automation.currentRotationIndex || 0) + 1;
     logger.info(`Resuming Automation ${automationId} at rotation #${nextIndex}`);
@@ -829,7 +839,7 @@ class SchedulerService {
           if (broadcast && (broadcast.status === 'LIVE' || broadcast.status === 'STREAMING')) {
             // Check if process is alive in memory/OS
             const streamProc = await StreamProcess.findOne({ broadcastId: broadcast._id, status: 'RUNNING' });
-            const isAlive = streamProc && ffmpegService.isPidAlive(streamProc.pid);
+            const isAlive = streamProc && (gstreamerService.isPidAlive(streamProc.pid) || ffmpegService.isPidAlive(streamProc.pid));
 
             if (!isAlive) {
               logger.warn(`Process for broadcast ${broadcast._id} is no longer running. Marking as CRASHED/RECOVERED.`);
@@ -864,7 +874,10 @@ class SchedulerService {
    */
   async emergencyStopAll() {
     logger.warn('EMERGENCY STOP EXECUTED: Stopping all active broadcasts across the platform.');
-    await ffmpegService.emergencyStopAll();
+    await Promise.allSettled([
+      gstreamerService.emergencyStopAll(),
+      ffmpegService.emergencyStopAll()
+    ]);
 
     await Broadcast.updateMany(
       { status: { $in: ['LIVE', 'STREAMING', 'ROTATING'] } },

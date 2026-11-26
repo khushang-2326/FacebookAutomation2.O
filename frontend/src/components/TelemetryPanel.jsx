@@ -22,9 +22,12 @@ export const TelemetryPanel = ({ metrics, activeProcess, isLive = true }) => {
       <div className="flex items-center justify-between border-b border-slate-800/80 pb-3 mb-4">
         <div className="flex items-center gap-2">
           <Activity className="w-5 h-5 text-emerald-400 animate-pulse" />
-          <h3 className="font-semibold text-slate-100 text-sm tracking-wide">FFmpeg Real-Time Telemetry</h3>
+          <h3 className="font-semibold text-slate-100 text-sm tracking-wide">GStreamer Real-Time Telemetry</h3>
         </div>
         <div className="flex items-center gap-2 flex-wrap justify-end">
+          <span className="text-[10px] font-bold px-2 py-0.5 rounded border bg-purple-500/15 text-purple-300 border-purple-500/30">
+            ENGINE: {data.engine || activeProcess?.engine || 'GSTREAMER'}
+          </span>
           {data.encoder && (
             <span className={`text-[10px] font-bold px-2 py-0.5 rounded border ${
               data.isHardwareEncoder !== false && data.encoder !== 'libx264'

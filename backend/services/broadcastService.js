@@ -4,6 +4,8 @@ const FacebookPage = require('../models/FacebookPage');
 const Media = require('../models/Media');
 const facebookService = require('./facebook/facebookService');
 const ffmpegService = require('./ffmpegService');
+const { gstreamerService } = require('./gstreamerService');
+const { gstreamerRuntimeDetector } = require('./gstreamerRuntimeDetector');
 const { Logger } = require('../utils/logger');
 
 const logger = new Logger('BroadcastService');
@@ -147,9 +149,12 @@ class BroadcastService {
       throw new Error(`Automation ${automationId} not found`);
     }
 
-    // Terminate any stale / lingering FFmpeg processes for this automation before starting new broadcast
+    // Terminate any stale / lingering GStreamer or FFmpeg processes for this automation before starting new broadcast
     try {
-      await ffmpegService.stopStreamsForAutomation(automation._id);
+      await Promise.allSettled([
+        gstreamerService.stopStreamsForAutomation(automation._id),
+        ffmpegService.stopStreamsForAutomation(automation._id)
+      ]);
     } catch (_) {}
 
     // Resolve target pages
@@ -420,21 +425,53 @@ class BroadcastService {
       }
     }
 
-    // 3. PRE-FLIGHT STEP 4: FFMPEG ENGINE VALIDATION
-    automation.ffmpegStatus = 'STARTING';
-    await automation.save();
+    // 3. PRE-FLIGHT STEP 4: MEDIA ENGINE VALIDATION
+    const isCameraStreaming = Boolean(
+      isRtspCamera ||
+      isLocalCamera ||
+      (automation.cameraSchedules && automation.cameraSchedules.length > 0) ||
+      (mediaOrCamera && (mediaOrCamera.isMultiCamera || mediaOrCamera.type === 'RTSP' || mediaOrCamera.type === 'WEBCAM'))
+    );
+    const gstCheck = gstreamerRuntimeDetector.detectRuntime();
 
-    const ffmpegCheck = mediaToolResolver.resolveFFmpeg();
-    if (!ffmpegCheck.available) {
-      logger.error(`Pre-flight failed: FFmpeg binary missing or unusable: ${ffmpegCheck.error}`);
-      automation.status = 'FAILED';
-      automation.ffmpegStatus = 'FAILED';
-      automation.failureStage = 'FFMPEG';
-      automation.failureCode = 'FFMPEG_BINARY_MISSING';
-      automation.healthStatus = 'ERROR';
-      automation.lastError = ffmpegCheck.error || 'FFmpeg executable unavailable';
+    if (isCameraStreaming) {
+      if (!gstCheck.available) {
+        const gstErr = `Live camera broadcasting requires GStreamer MSVC 64-bit runtime: ${gstCheck.error || 'GStreamer not found'}. Please install GStreamer 1.20+ MSVC binaries.`;
+        logger.error(`Pre-flight failed: ${gstErr}`);
+        automation.status = 'FAILED';
+        automation.gstreamerStatus = 'FAILED';
+        automation.mediaEngineStatus = 'FAILED';
+        automation.failureStage = 'GSTREAMER';
+        automation.failureCode = 'GSTREAMER_NOT_INSTALLED';
+        automation.healthStatus = 'ERROR';
+        automation.lastError = gstErr;
+        await automation.save();
+        throw new Error(gstErr);
+      }
+      automation.mediaEngine = 'GSTREAMER';
+      automation.gstreamerStatus = 'STARTING';
+      automation.mediaEngineStatus = 'STARTING';
+      automation.ffmpegStatus = 'RUNNING'; // backwards compatibility for status badges
       await automation.save();
-      throw new Error(ffmpegCheck.error);
+      logger.info(`[BroadcastService] Pre-flight: GStreamer media engine validated for live camera streaming.`);
+    } else {
+      automation.mediaEngine = 'FFMPEG';
+      automation.ffmpegStatus = 'STARTING';
+      automation.mediaEngineStatus = 'STARTING';
+      await automation.save();
+
+      const ffmpegCheck = mediaToolResolver.resolveFFmpeg();
+      if (!ffmpegCheck.available) {
+        logger.error(`Pre-flight failed: Media engine binary missing or unusable: ${ffmpegCheck.error}`);
+        automation.status = 'FAILED';
+        automation.ffmpegStatus = 'FAILED';
+        automation.failureStage = 'FFMPEG';
+        automation.failureCode = 'MEDIA_ENGINE_MISSING';
+        automation.healthStatus = 'ERROR';
+        automation.lastError = ffmpegCheck.error || 'Media engine executable unavailable';
+        await automation.save();
+        throw new Error(automation.lastError);
+      }
     }
 
     // 4. PRE-FLIGHT STEP 5: DESTINATION VALIDATION & BROADCAST CREATION
@@ -638,7 +675,7 @@ class BroadcastService {
     automation.currentRotationIndex = rotationIndex;
     await automation.save();
 
-    // 6. SPAWN FFMPEG STREAM
+    // 6. SPAWN LIVE STREAM (GStreamer for Live Cameras, FFmpeg for Legacy/Media items)
     try {
       broadcast.status = 'STREAMING';
       await broadcast.save();
@@ -647,10 +684,36 @@ class BroadcastService {
       automation.facebookStatus = 'CONNECTING';
       await automation.save();
 
-      await ffmpegService.startStream(broadcast, automation, mediaOrCamera, finalStreamTarget, {
-        youtubeResolution: ytResolution,
-        facebookResolution: fbResolution
-      });
+      const isCameraStream = Boolean(
+        isRtspCamera ||
+        isLocalCamera ||
+        (automation.cameraSchedules && automation.cameraSchedules.length > 0) ||
+        (mediaOrCamera && (mediaOrCamera.isMultiCamera || mediaOrCamera.type === 'RTSP' || mediaOrCamera.type === 'WEBCAM'))
+      );
+
+      if (isCameraStream) {
+        if (!gstreamerService.isAvailable()) {
+          const gstErr = 'Live camera broadcasting requires GStreamer MSVC 64-bit runtime. Please install GStreamer 1.20+ MSVC binaries.';
+          throw new Error(gstErr);
+        }
+        logger.info(`[BroadcastService] Spawning live camera stream via GStreamer engine for Broadcast ${broadcast._id}`);
+        await gstreamerService.startCameraStream(broadcast, automation, mediaOrCamera, finalStreamTarget, {
+          youtubeResolution: ytResolution,
+          facebookResolution: fbResolution
+        });
+        automation.mediaEngine = 'GSTREAMER';
+        automation.gstreamerStatus = 'RUNNING';
+        automation.mediaEngineStatus = 'RUNNING';
+        automation.ffmpegStatus = 'RUNNING';
+      } else {
+        logger.info(`[BroadcastService] Spawning static media stream via FFmpeg for Broadcast ${broadcast._id}`);
+        await ffmpegService.startStream(broadcast, automation, mediaOrCamera, finalStreamTarget, {
+          youtubeResolution: ytResolution,
+          facebookResolution: fbResolution
+        });
+        automation.mediaEngine = 'FFMPEG';
+        automation.mediaEngineStatus = 'RUNNING';
+      }
 
       // 7. MARK BROADCAST & AUTOMATION AS LIVE
       broadcast.status = 'LIVE';
@@ -740,8 +803,11 @@ class BroadcastService {
 
     logger.info(`Ending Broadcast ${broadcastId} (FB Video ID: ${broadcast.fbLiveVideoId}, Reason: ${reason})`);
 
-    // 1. Stop FFmpeg encoder process
-    await ffmpegService.stopStream(broadcast._id);
+    // 1. Stop active streaming processes (GStreamer & FFmpeg)
+    await Promise.allSettled([
+      gstreamerService.stopStream(broadcast._id),
+      ffmpegService.stopStream(broadcast._id)
+    ]);
 
     // 2. Release MediaMTX proxy paths if active (only when stopping/completing, not during rotation or live module update)
     const isContinuing = reason === 'ROTATION' || reason === 'LIVE_MODULE_UPDATE';
@@ -887,56 +953,12 @@ class BroadcastService {
 
       // Check if this switch is running multi-camera or routine scheduled rotation
       const isManual = options && options.isManual !== false;
-      const activeEntry = ffmpegService.activeProcesses.get(broadcast._id.toString());
-      const isAlreadyRunningMultiCam = Boolean(activeEntry && activeEntry.isMultiCamera);
 
-      // 1. If running with ZMQ in-place dynamic switching, execute in-place switch immediately (Zero-Disconnect, zero interruption!)
-      if (activeEntry && activeEntry.isMultiCamera && activeEntry.zmqPort) {
-        logger.info(`[BroadcastService] Performing ZERO-DISCONNECT in-place camera switch (${isManual ? 'MANUAL' : 'SCHEDULED'}) to Slot #${idx + 1} (${selectedCameraName}) for Automation ${automation._id}. Process and RTMPS remain uninterrupted.`);
-        const inPlaceRes = await ffmpegService.switchCameraInPlace(broadcast._id, idx);
-
-        if (inPlaceRes && inPlaceRes.success) {
-          const now = new Date();
-          automation.currentCameraSlotIndex = idx;
-          automation.cameraStreamStartedAt = now;
-          await automation.save();
-
-          try {
-            const socketService = require('./socketService');
-            const switchPayload = {
-              automationId: automation._id.toString(),
-              activeSlotIndex: idx,
-              slotIndex: idx,
-              cameraName: selectedCameraName,
-              durationSeconds: targetDuration,
-              streamStartedAt: now.toISOString(),
-              cameraStreamStartedAt: now.toISOString(),
-              isLiveSwitch: true,
-              uninterrupted: true,
-              inPlace: true
-            };
-            socketService.emitToAutomation(automation._id.toString(), 'camera:active_switched', switchPayload);
-            socketService.emitGlobal('camera:active_switched', switchPayload);
-          } catch (_) {}
-
-          return {
-            success: true,
-            activeSlotIndex: idx,
-            cameraName: selectedCameraName,
-            durationSeconds: targetDuration,
-            cameraStreamStartedAt: now,
-            uninterrupted: true,
-            inPlace: true
-          };
-        } else {
-          logger.warn(`[BroadcastService] In-place switch failed for Automation ${automation._id}: ${inPlaceRes?.error || 'Unknown error'}. Falling back to safe hot-switch.`);
-        }
-      }
-
-      if (!isManual && isAlreadyRunningMultiCam) {
-        // Routine scheduled cycle: FFmpeg is ALREADY cycling cameras continuously via filter_complex!
-        // DO NOT terminate FFmpeg; simply advance slot state and notify frontend UI
-        logger.info(`[BroadcastService] Routine scheduled rotation to Slot #${idx + 1} (${selectedCameraName}) for Automation ${automation._id}. FFmpeg pipeline remains uninterrupted (Zero-Disconnect).`);
+      // 1. PRIMARY ENGINE: Zero-disconnect GStreamer in-process input-selector switch
+      const isGstActive = gstreamerService.activeProcesses.has(broadcast._id.toString());
+      if (isGstActive) {
+        logger.info(`[BroadcastService] Performing ZERO-DISCONNECT GStreamer camera switch (${isManual ? 'MANUAL' : 'SCHEDULED'}) to Slot #${idx + 1} (${selectedCameraName}) for Automation ${automation._id}. GStreamer pipeline, RTMPS, and HDMI remain uninterrupted.`);
+        const gstRes = await gstreamerService.switchCamera(broadcast._id, idx);
 
         const now = new Date();
         automation.currentCameraSlotIndex = idx;
@@ -954,7 +976,10 @@ class BroadcastService {
             streamStartedAt: now.toISOString(),
             cameraStreamStartedAt: now.toISOString(),
             isLiveSwitch: true,
-            uninterrupted: true
+            uninterrupted: true,
+            inPlace: true,
+            engine: 'GSTREAMER',
+            latencyMs: gstRes?.latencyMs || 0.1
           };
           socketService.emitToAutomation(automation._id.toString(), 'camera:active_switched', switchPayload);
           socketService.emitGlobal('camera:active_switched', switchPayload);
@@ -966,25 +991,16 @@ class BroadcastService {
           cameraName: selectedCameraName,
           durationSeconds: targetDuration,
           cameraStreamStartedAt: now,
-          uninterrupted: true
+          uninterrupted: true,
+          inPlace: true,
+          engine: 'GSTREAMER',
+          latencyMs: gstRes?.latencyMs || 0.1
         };
       }
 
-      // Manual switch OR non-multi-camera pipeline: Prepare all camera sources for reordering
-      const allPreparedSources = await this.prepareCameraSources(automation);
-      const reorderedSources = allPreparedSources.length > 1
-        ? [...allPreparedSources.slice(idx), ...allPreparedSources.slice(0, idx)]
-        : allPreparedSources;
-      const targetCamera = reorderedSources[0];
-
-      if (!targetCamera) {
-        throw new Error(`No valid camera configuration found for slot #${idx + 1}`);
-      }
-
-      logger.info(`Switching Live Camera for Automation ${automation._id} to Slot #${idx + 1} (${targetCamera.name}) for ${targetCamera.durationSeconds}s`);
-
-      // 2. Hot-switch the FFmpeg stream to begin immediately with the target camera
-      await ffmpegService.switchMultiCameraStream(broadcast, automation, reorderedSources, idx);
+      // If GStreamer pipeline is not active for this live camera broadcast, raise error
+      logger.error(`[BroadcastService] Cannot switch camera: GStreamer broadcast ${broadcast._id} is not running.`);
+      throw new Error(`Live camera broadcast ${broadcast._id} is not active on GStreamer engine.`);
 
       // 3. Update automation DB state
       const now = new Date();

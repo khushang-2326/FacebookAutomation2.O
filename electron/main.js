@@ -133,6 +133,42 @@ function setupBundledBinaries() {
     log(`[Electron] Bundled binary environment configured: ${bundledBinDir}`);
     log(`[Electron] Explicit FFMPEG_PATH: ${process.env.FFMPEG_PATH}`);
   }
+
+  // Discover and configure GStreamer runtime environment on Windows
+  const os = require('os');
+  const homedir = os.homedir();
+  const gstCandidates = [
+    process.env.GSTREAMER_BIN,
+    process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64 ? path.join(process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64, 'bin') : null,
+    process.env.GSTREAMER_ROOT ? path.join(process.env.GSTREAMER_ROOT, 'bin') : null,
+    path.join(homedir, 'AppData', 'Local', 'Programs', 'gstreamer', '1.0', 'msvc_x86_64', 'bin'),
+    'C:\\gstreamer\\1.0\\msvc_x86_64\\bin',
+    'C:\\Program Files\\gstreamer\\1.0\\msvc_x86_64\\bin',
+    bundledBinDir ? path.join(bundledBinDir, 'gstreamer', 'bin') : null
+  ].filter(Boolean);
+
+  let gstBinDir = null;
+  for (const dir of gstCandidates) {
+    if (fs.existsSync(path.join(dir, 'gst-launch-1.0.exe'))) {
+      gstBinDir = dir;
+      break;
+    }
+  }
+
+  if (gstBinDir) {
+    process.env.GSTREAMER_BIN = gstBinDir;
+    const gstRootDir = path.resolve(gstBinDir, '..');
+    process.env.GSTREAMER_1_0_ROOT_MSVC_X86_64 = gstRootDir;
+    const gstPluginDir = path.join(gstRootDir, 'lib', 'gstreamer-1.0');
+    if (fs.existsSync(gstPluginDir)) {
+      process.env.GST_PLUGIN_PATH = gstPluginDir;
+    }
+    process.env.PATH = `${gstBinDir}${path.delimiter}${process.env.PATH || ''}`;
+    log(`[Electron] GStreamer runtime environment configured: ${gstBinDir}`);
+    log(`[Electron] GST_PLUGIN_PATH: ${process.env.GST_PLUGIN_PATH || 'default'}`);
+  } else {
+    log('[Electron] Note: GStreamer runtime not detected in standard paths.');
+  }
 }
 
 // 1. Initialize Embedded Backend

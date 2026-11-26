@@ -7,6 +7,7 @@ const {
   getDevices,
   getTrialStatus,
   getGpuDiagnostics,
+  getGStreamerDiagnostics,
   setGpuMode,
   exportDiagnosticReport
 } = require('../controllers/systemController');
@@ -17,6 +18,7 @@ router.get('/trial-status', getTrialStatus);
 router.get('/media-tools', getMediaToolsHealth);
 router.get('/devices', getDevices);
 router.get('/gpu-diagnostics', getGpuDiagnostics);
+router.get('/gstreamer-diagnostics', getGStreamerDiagnostics);
 router.post('/gpu-mode', setGpuMode);
 router.get('/export-diagnostic-report', exportDiagnosticReport);
 router.get('/logs', protect, getLogs);

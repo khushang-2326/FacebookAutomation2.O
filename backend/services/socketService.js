@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
 const ffmpegService = require('./ffmpegService');
+const { gstreamerService } = require('./gstreamerService');
 const { Logger } = require('../utils/logger');
 
 const logger = new Logger('SocketService');
@@ -37,7 +38,28 @@ class SocketService {
       });
     });
 
-    // Wire up FFmpeg service telemetry events to Socket.IO
+    // Wire up GStreamer service telemetry events to Socket.IO
+    gstreamerService.on('metrics', (data) => {
+      this.emitToAutomation(data.automationId, 'gstreamer:metrics', data);
+      this.emitGlobal('gstreamer:metrics', data);
+      // Backward compatibility for components listening to ffmpeg:metrics
+      this.emitToAutomation(data.automationId, 'ffmpeg:metrics', data);
+      this.emitGlobal('ffmpeg:metrics', data);
+    });
+
+    gstreamerService.on('processClosed', (data) => {
+      this.emitToAutomation(data.automationId, 'gstreamer:closed', data);
+      this.emitGlobal('gstreamer:closed', data);
+      this.emitToAutomation(data.automationId, 'ffmpeg:closed', data);
+      this.emitGlobal('ffmpeg:closed', data);
+    });
+
+    gstreamerService.on('stream:error', (data) => {
+      this.emitToAutomation(data.automationId, 'gstreamer:error', data);
+      this.emitGlobal('gstreamer:error', data);
+    });
+
+    // Wire up FFmpeg service telemetry events to Socket.IO (for legacy file / static media streams)
     ffmpegService.on('metrics', (data) => {
       this.emitToAutomation(data.automationId, 'ffmpeg:metrics', data);
       this.emitGlobal('ffmpeg:metrics', data);

@@ -49,7 +49,7 @@ export const Logs = () => {
         <div>
           <h2 className="text-2xl font-bold text-slate-100 tracking-tight">System & Stream Logs</h2>
           <p className="text-sm text-slate-400 mt-0.5">
-            Real-time event logging, scheduler ticks, FFmpeg telemetry, and Meta API audit records.
+            Real-time event logging, scheduler ticks, GStreamer telemetry, and Meta API audit records.
           </p>
         </div>
 

@@ -9,6 +9,8 @@ const facebookService = require('../services/facebook/facebookService');
 const { mediaToolResolver } = require('../services/mediaToolResolver');
 const trialService = require('../services/trialService');
 const { hardwareEncoderService } = require('../services/hardwareEncoderService');
+const { gstreamerRuntimeDetector } = require('../services/gstreamerRuntimeDetector');
+const { gstreamerService } = require('../services/gstreamerService');
 const config = require('../config/config');
 
 // @desc    Get trial and license status
@@ -30,9 +32,11 @@ exports.getTrialStatus = async (req, res) => {
 exports.getMediaToolsHealth = async (req, res) => {
   try {
     const health = mediaToolResolver.getHealthStatus(true);
+    const gstDiag = gstreamerRuntimeDetector.getDiagnosticSummary();
     res.json({
       success: true,
-      ...health
+      ...health,
+      gstreamer: gstDiag
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
@@ -77,7 +81,7 @@ exports.getDevices = async (req, res) => {
 exports.getHealth = async (req, res) => {
   try {
     const mongoStatus = mongoose.connection.readyState === 1 ? 'CONNECTED' : 'DISCONNECTED';
-    const activeStreamsCount = ffmpegService.activeProcesses.size;
+    const activeStreamsCount = ffmpegService.activeProcesses.size + gstreamerService.activeProcesses.size;
 
     const totalAutomations = await Automation.countDocuments();
     const liveAutomations = await Automation.countDocuments({ status: 'LIVE' });
@@ -158,9 +162,27 @@ exports.getLogs = async (req, res, next) => {
 exports.getGpuDiagnostics = async (req, res) => {
   try {
     const telemetry = hardwareEncoderService.getTelemetry();
+    const gstDiag = gstreamerRuntimeDetector.getDiagnosticSummary();
     res.json({
       success: true,
-      diagnostics: telemetry
+      diagnostics: {
+        ...telemetry,
+        gstreamer: gstDiag
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+};
+
+// @desc    Get dedicated GStreamer media engine diagnostic summary
+// @route   GET /api/system/gstreamer-diagnostics
+exports.getGStreamerDiagnostics = async (req, res) => {
+  try {
+    const summary = gstreamerRuntimeDetector.getDiagnosticSummary();
+    res.json({
+      success: true,
+      diagnostics: summary
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

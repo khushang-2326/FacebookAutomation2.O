@@ -26,15 +26,19 @@ export const SocketProvider = ({ children }) => {
       console.log('⚡ Socket.IO Disconnected');
     });
 
-    newSocket.on('ffmpeg:metrics', (data) => {
-      if (data && data.broadcastId) {
+    const handleStreamMetrics = (data) => {
+      if (data && (data.broadcastId || data.automationId)) {
+        const metricsPayload = data.metrics || data;
         setLatestMetrics((prev) => ({
           ...prev,
-          [data.broadcastId]: data.metrics,
-          [data.automationId]: data.metrics,
+          ...(data.broadcastId ? { [data.broadcastId]: metricsPayload } : {}),
+          ...(data.automationId ? { [data.automationId]: metricsPayload } : {}),
         }));
       }
-    });
+    };
+
+    newSocket.on('gstreamer:metrics', handleStreamMetrics);
+    newSocket.on('ffmpeg:metrics', handleStreamMetrics);
 
     setSocket(newSocket);
 

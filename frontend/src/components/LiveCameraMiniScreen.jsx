@@ -284,8 +284,10 @@ export const LiveCameraMiniScreen = ({
       }
     };
 
+    socket.on('gstreamer:metrics', handleMetrics);
     socket.on('ffmpeg:metrics', handleMetrics);
     return () => {
+      socket.off('gstreamer:metrics', handleMetrics);
       socket.off('ffmpeg:metrics', handleMetrics);
     };
   }, [socket, rawAutoId, automation?._id, automation?.activeBroadcastId]);
